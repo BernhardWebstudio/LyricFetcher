@@ -3,14 +3,21 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"net/http"
+	"net/url"
 
 	"github.com/bogem/id3v2"
 )
+
+type WikiLyric struct {
+	Lyric string `json:"lyric"`
+	Err   string `json:"err"`
+}
 
 func main() {
 	args := os.Args[1:]
@@ -24,7 +31,7 @@ func main() {
 				return err
 			}
 			// automatically skip dir etc. by not doing anything
-			if filepath.Ext(path) == ".mp3" {
+			if filepath.Ext(path) == ".mp3" { // || filepath.Ext(path) == ".m4a"
 				handleFile(path)
 			} else {
 				fmt.Println("Skipping " + path)
@@ -39,60 +46,104 @@ func handleFile(file string) {
 	// Open file and parse tag in it.
 	tag, err := id3v2.Open(file, id3v2.Options{Parse: true})
 	if err != nil {
-		log.Fatal("Error while opening mp3 file: ", err)
+		fmt.Printf("Error while opening mp3 file: %v", err)
+		return
 	}
 	defer tag.Close()
 
 	// do not load lyrics if already present
+	hasLyrics := false
 	uslfs := tag.GetFrames(tag.CommonID("Unsynchronised lyrics/text transcription"))
-	if uslfs != nil {
+	for _, f := range uslfs {
+		uslf, ok := f.(id3v2.UnsynchronisedLyricsFrame)
+		if !ok {
+			fmt.Println("Couldn't assert USLT frame. Skipping.")
+			return
+		}
+
+		if uslf.Lyrics != "" {
+			hasLyrics = true
+		}
+	}
+
+	if hasLyrics {
 		return
 	}
 
 	// Read frames to fetch lyrics.
-	lyric := loadLyric(tag.Artist(), tag.Title())
+	artist := tag.Artist()
+	title := tag.Title()
+	if artist == "" {
+		fmt.Println("Artist not set. Skipping.")
+		return
+	}
+	if title == "" {
+		fmt.Println("Title not set. Skipping.")
+		return
+	}
+
+	lyric, err := loadLyric(artist, title)
+	if err != nil {
+		fmt.Printf("Error while loading lyric: %v", err)
+		return
+	}
 
 	// Set lyrics frame.
 	tag.AddUnsynchronisedLyricsFrame(lyric)
 
 	// Write it to file.
-	if err = tag.Save(); err != nil {
-		log.Fatal("Error while saving a tag: ", err)
+	err = tag.Save()
+	if err != nil {
+		fmt.Printf("Error while saving tag: %v", err)
+		return
 	}
 }
 
 /**
 * Get the lyrics object
  */
-func loadLyric(artist, title string) id3v2.UnsynchronisedLyricsFrame {
-	lyric := loadLyricsFromWikia(artist, title)
+func loadLyric(artist, title string) (lyricFrame id3v2.UnsynchronisedLyricsFrame, err error) {
+	// TODO: handle failures
+	// maybe by using different API: https://github.com/BharatKalluri/lyricfetcher
+	lyric, err := loadLyricsFromWikia(artist, title)
+	if err != nil || strings.TrimSpace(lyric) == "" {
+		return lyricFrame, err
+	}
 
+	fmt.Println(lyric)
+
+	// TODO: detect language, e.g. with https://github.com/chrisport/go-lang-detector
 	uslt := id3v2.UnsynchronisedLyricsFrame{
 		Encoding:          id3v2.EncodingUTF8,
-		Language:          "eng", // todo: detect language
+		Language:          "eng",
 		ContentDescriptor: "Lyrics of " + title,
 		Lyrics:            lyric,
 	}
 
-	return uslt
+	return uslt, nil
 }
 
-func loadLyricsFromWikia(artist, title string) string {
-	url := "http://lyric-api.herokuapp.com/api/find/" + artist + "/" + title
-	req, err := http.Get(url)
+func loadLyricsFromWikia(artist, title string) (lyrics string, err error) {
+	url := "http://lyric-api.herokuapp.com/api/find/" + url.QueryEscape(artist) + "/" + url.QueryEscape(title)
+	response, err := http.Get(url)
 	if err != nil {
-		log.Fatal("Error while fetching lyrics: ", err)
-		return ""
+		return "", nil
 	}
-	defer req.Body.Close()
+	defer response.Body.Close()
 	// req.Response will contain a JavaScript Document element that can
 	// for example be used with the js/dom package.
 	var l WikiLyric
-	json.NewDecoder(req.Body).Decode(l)
-	return l.lyric
-}
-
-type WikiLyric struct {
-	lyric string
-	err   string
+	contents, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		return "", err
+	}
+	fmt.Println(string(contents[:]))
+	err = json.Unmarshal(contents, &l)
+	if err != nil {
+		return "", err
+	}
+	if l.Err == "" {
+		fmt.Println(l.Err)
+	}
+	return l.Lyric, nil
 }
