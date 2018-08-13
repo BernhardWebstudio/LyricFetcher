@@ -9,10 +9,11 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mikkyang/id3-go"
+	"github.com/mikkyang/id3-go/v2"
+
 	"net/http"
 	"net/url"
-
-	"github.com/bogem/id3v2"
 )
 
 type WikiLyric struct {
@@ -45,35 +46,28 @@ func main() {
 func handleFile(file string) {
 	fmt.Println("Handling " + file)
 	// Open file and parse tag in it.
-	tag, err := id3v2.Open(file, id3v2.Options{Parse: true})
+	mp3File, err := id3.Open(file)
 	if err != nil {
 		fmt.Printf("Error while opening mp3 file: %v\n", err)
 		return
 	}
-	defer tag.Close()
+	defer mp3File.Close()
 
 	// do not load lyrics if already present
-	hasLyrics := false
-	uslfs := tag.GetFrames(tag.CommonID("Unsynchronised lyrics/text transcription"))
-	for _, f := range uslfs {
-		uslf, ok := f.(id3v2.UnsynchronisedLyricsFrame)
-		if !ok {
-			fmt.Println("Couldn't assert USLT frame. Skipping.")
-			return
-		}
-
-		if uslf.Lyrics != "" {
-			hasLyrics = true
-		}
+	uslfs, fail := mp3File.Frame("USLT").(*v2.UnsynchTextFrame)
+	if fail != false {
+		fmt.Printf("Error while fetching USLT frame: %v\n", fail)
+		return
 	}
 
-	if hasLyrics {
+	// has lyrics
+	if uslfs != nil && uslfs.String() != "" {
 		return
 	}
 
 	// Read frames to fetch lyrics.
-	artist := tag.Artist()
-	title := tag.Title()
+	artist := mp3File.Artist()
+	title := mp3File.Title()
 	if artist == "" {
 		fmt.Println("Artist not set. Skipping.")
 		return
@@ -90,22 +84,15 @@ func handleFile(file string) {
 		return
 	}
 
-	fmt.Println("setting lyrics with length " + string(len(lyric.Lyrics)) + " with lang " + lyric.Language + " on " + file)
+	fmt.Println("setting lyrics on " + file)
 	// Set lyrics frame.
-	tag.AddUnsynchronisedLyricsFrame(lyric)
-
-	// Write it to file.
-	err = tag.Save()
-	if err != nil {
-		fmt.Printf("Error while saving tag: %v", err)
-		return
-	}
+	mp3File.AddFrames(lyric)
 }
 
 /**
 * Get the lyrics object
  */
-func loadLyric(artist, title string) (uslf id3v2.UnsynchronisedLyricsFrame, err error) {
+func loadLyric(artist, title string) (uslf *v2.UnsynchTextFrame, err error) {
 	// TODO: handle failures
 	// maybe by using different API: https://github.com/BharatKalluri/lyricfetcher
 	lyric, err := loadLyricsFromWikia(artist, title)
@@ -113,18 +100,16 @@ func loadLyric(artist, title string) (uslf id3v2.UnsynchronisedLyricsFrame, err 
 		return uslf, err
 	}
 
+	desc := "Lyrics of " + title + " by " + artist
+
 	if strings.TrimSpace(lyric) == "" {
-		return uslf, errors.New("Empty lyrics found: " + lyric)
+		return uslf, errors.New("Empty " + desc + " found: " + lyric)
 	}
 
 	// TODO: detect language, e.g. with https://github.com/chrisport/go-lang-detector
-	uslf = id3v2.UnsynchronisedLyricsFrame{
-		Encoding:          id3v2.EncodingUTF8,
-		Language:          "eng",
-		ContentDescriptor: "Lyrics of " + title,
-		Lyrics:            lyric,
-	}
-
+	ft := v2.V23FrameTypeMap["USLT"]
+	uslf = v2.NewUnsynchTextFrame(ft, desc, lyric)
+	fmt.Println("Loaded " + desc)
 	return uslf, err
 }
 
