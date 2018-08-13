@@ -146,8 +146,8 @@ func loadLyricsFromWikia(artist, title string) (lyrics string, err error) {
 	if err != nil {
 		return lyrics, err
 	}
-	fmt.Printf("%+v\n", l.Err)
 	if l.Err == nil {
+		fmt.Printf("%+v\n", l.Err)
 		errorMessage, err := json.Marshal(l.Err)
 		if nil != err {
 			err = errors.New(string(errorMessage[:]))
