@@ -14,10 +14,12 @@ type wikiLyric struct {
 	Err   interface{} `json:"err"`
 }
 
-type wikiaFetcher struct {
+// WikiaFetcher fetch lyrics from Wikia
+type WikiaFetcher struct {
 }
 
-func (w wikiaFetcher) FetchLyrics(artist, title string) (lyrics string, err error) {
+// FetchLyrics @inheritDoc()
+func (w WikiaFetcher) FetchLyrics(artist, title string) (lyrics string, err error) {
 	url := "http://lyric-api.herokuapp.com/api/find/" + url.QueryEscape(artist) + "/" + url.QueryEscape(title)
 	response, err := http.Get(url)
 	if err != nil {

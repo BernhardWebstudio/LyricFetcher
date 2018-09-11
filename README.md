@@ -9,7 +9,7 @@ As this tool is not yet officially released, you have to use it from source:
 
 0. You require to have [go](https://golang.org) installed.
 1. Download or clone this repo
-2. Run `go path/to/repo/src/index.go path/to/music`
+2. Run `go path/to/repo/cmd/fetch.go path/to/music`
 3. Resolve the missing dependencies if any
 
 ## Contribution

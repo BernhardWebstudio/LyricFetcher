@@ -1,5 +1,6 @@
 package fetcher
 
-type fetcher interface {
-	LoadLyrics(artist, title string) (lyrics string, err error)
+// Fetcher interface
+type Fetcher interface {
+	FetchLyrics(artist, title string) (lyrics string, err error)
 }

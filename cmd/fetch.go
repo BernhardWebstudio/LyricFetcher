@@ -1,11 +1,10 @@
 package main
 
 import (
-	"fmt"
-  "log"
-  "./internal/app" as "internal"
+	"log"
 	"os"
 
+	"github.com/BernhardWebstudio/LyricFetcher/pkg/handler"
 	"github.com/urfave/cli"
 )
 
@@ -14,8 +13,7 @@ func main() {
 	app.Name = "LyricFetcher"
 	app.Usage = "Add lyrics to your music library files"
 	app.Action = func(c *cli.Context) error {
-		internal.HandleFiles(os.Args[1:])
-		fmt.Println("boom! I say!")
+		handler.HandleFiles(os.Args[1:])
 		return nil
 	}
 
